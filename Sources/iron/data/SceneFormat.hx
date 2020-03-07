@@ -515,6 +515,5 @@ typedef TTrack = {
 #end
 	public var target: String;
 	public var frames: Uint32Array;
-	public var values: Float32Array; // sampled - full matrix transforms, non-sampled - values
-	@:optional public var ref_values: Array<Array<String>>; // ref values
+	public var values: Dynamic; // sampled - full matrix transforms, non-sampled - values
 }

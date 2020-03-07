@@ -9,16 +9,23 @@ import iron.data.SceneFormat;
 
 class ObjectAnimation extends Animation {
 
+	var updateAnim: TAnimation->Transform->Void;
 	public var object: Object;
 	var oactions: Array<TSceneFormat>;
 	var oaction: TObj;
 	var s0: FastFloat = 0.0;
 	var bezierFrameIndex = -1;
+	var arrayIndex = 0;
 
 	public function new(object: Object, oactions: Array<TSceneFormat>) {
 		this.object = object;
 		this.oactions = oactions;
 		isSkinned = false;
+		if (oactions[0].objects[0].type == "visibility") {
+			updateAnim = updateVisibilityAnim;
+		} else {
+			updateAnim = updateTransformAnim;
+		}
 		super();
 	}
 
@@ -53,8 +60,7 @@ class ObjectAnimation extends Animation {
 	}
 
 	function updateObjectAnim() {
-		updateTransformAnim(oaction.anim, object.transform);
-		object.transform.buildMatrix();
+		updateAnim(oaction.anim, object.transform);
 	}
 
 	inline function interpolateLinear(t: FastFloat, t1: FastFloat, t2: FastFloat, v1: FastFloat, v2: FastFloat): FastFloat {
@@ -148,10 +154,118 @@ class ObjectAnimation extends Animation {
 				case "dzscl": transform.dscale.z = value;
 			}
 		}
+		object.transform.buildMatrix();
+	}
+
+	function rewindWithLast(track: TTrack, begin: Int = 0, end: Int = -1) {
+		frameIndex = speed > 0 ? begin : end - 1;
+		time = frameIndex * frameTime;
+	}
+
+	function spawnVisibilityCache(ti: Int, track: TTrack) {
+		var layerObjects: Array<String> = track.values[ti];
+		var visibleObjects = [];
+
+		function done(obj: Object) {
+			visibleObjects.push(obj);
+			obj.visible = false;
+		}
+		for (lObj in layerObjects) Scene.active.spawnObject(lObj, this.object, done);
+
+		lCache.frames[ti] = visibleObjects;
+	}
+
+	// takes into account the last frame as a full frame
+	inline function checkFrameIndexTWithLast(start: Int, end: Int, t: FastFloat): Bool {
+		return speed > 0 ?
+			frameIndex < end && t > (frameIndex + 1) * frameTime :
+			frameIndex > start && t > (frameIndex - 1) * frameTime;
+	}
+
+	var oldti = null;
+	var oldtilayer: Map<String, Int>;
+	var layerObjectsCache: Array<Object>;
+	var layersCache: Map<String, VisibilityLayerCache>;
+	var lCache: VisibilityLayerCache = null;
+	function updateVisibilityAnim(anim: TAnimation, transform: Transform) {
+		if (anim == null) return;
+		if (oldtilayer == null) {
+			oldtilayer = new Map<String, Int>();
+			layersCache = new Map<String, VisibilityLayerCache>();
+		}
+
+		var total = (anim.end + 1) * frameTime;
+		for (track in anim.tracks) {
+			if (frameIndex == -1) rewindWithLast(track, anim.begin, anim.end);
+			var sign = speed > 0 ? 1 : -1;
+			// End of current time range
+			while (checkFrameIndexTWithLast(anim.begin, anim.end, time)) frameIndex += sign;
+			// No data for this track at current time
+			if (frameIndex > track.frames.length) continue;
+
+			// End of track
+			if (time > total) {
+				if (onComplete != null) onComplete();
+				if (loop) rewindWithLast(track, anim.begin, anim.end);
+				else { frameIndex -= sign; paused = true; }
+				return;
+			}
+			var ti = frameIndex - anim.begin;
+			// allow only one draw call per frame, using a cache
+			if ((oldti = oldtilayer.get(track.target)) == null) { // setup cache for drawn frames
+				oldti = -1;
+				oldtilayer.set(track.target, oldti);
+			}
+			// evaluate if this is a new frame to draw
+			if (oldti != ti) {
+				oldti = ti;
+				oldtilayer.set(track.target, oldti);
+			}
+			else {
+				continue;
+			}
+
+			// setup and spawn the first frame
+			if ((lCache = layersCache.get(track.target)) == null) {
+				lCache = {
+					visible: true,
+					last_ti: null,
+					frames: [for (i in 0...track.values.length) []]
+				};
+				layersCache.set(track.target, lCache);
+				spawnVisibilityCache(ti, track);
+			}
+			// spawn the rest of the anim
+			else if (track.values[ti].length != 0 && lCache.frames[ti].length == 0) {
+				spawnVisibilityCache(ti, track);
+			}
+			// draw current frame data
+			if ((layerObjectsCache = lCache.frames[ti]) != null) {
+				if (layerObjectsCache.length == 0) continue;
+				for (lObj in layerObjectsCache)	lObj.visible = true;
+			}
+			// hide old frame data
+			if (lCache.last_ti != null) {
+				if((layerObjectsCache = lCache.frames[lCache.last_ti]) != null) {
+					for (olObj in layerObjectsCache) olObj.visible = false;
+				}
+			}
+			lCache.last_ti = ti;
+		}
 	}
 
 	override public function totalFrames(): Int {
 		if (oaction == null || oaction.anim == null) return 0;
 		return oaction.anim.end - oaction.anim.begin;
 	}
+}
+
+#if js
+typedef VisibilityLayerCache = {
+#else
+@:structInit class VisibilityLayerCache {
+#end
+	public var visible: Bool;
+	public var last_ti: Null<Int>;
+	public var frames: Array<Array<Object>>;
 }
