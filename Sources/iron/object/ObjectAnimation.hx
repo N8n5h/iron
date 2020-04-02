@@ -15,7 +15,6 @@ class ObjectAnimation extends Animation {
 	var oaction: TObj;
 	var s0: FastFloat = 0.0;
 	var bezierFrameIndex = -1;
-	var arrayIndex = 0;
 
 	public function new(object: Object, oactions: Array<TSceneFormat>) {
 		this.object = object;
@@ -157,11 +156,6 @@ class ObjectAnimation extends Animation {
 		object.transform.buildMatrix();
 	}
 
-	function rewindWithLast(track: TTrack, begin: Int = 0, end: Int = -1) {
-		frameIndex = speed > 0 ? begin : end - 1;
-		time = frameIndex * frameTime;
-	}
-
 	function spawnVisibilityCache(ti: Int, track: TTrack) {
 		var layerObjects: Array<String> = track.values[ti];
 		var visibleObjects = [];
@@ -172,14 +166,13 @@ class ObjectAnimation extends Animation {
 		}
 		for (lObj in layerObjects) Scene.active.spawnObject(lObj, this.object, done);
 
-		lCache.frames[ti] = visibleObjects;
+		lCache.frames.push(visibleObjects);
 	}
-
 	// takes into account the last frame as a full frame
-	inline function checkFrameIndexTWithLast(start: Int, end: Int, t: FastFloat): Bool {
+	inline function checkFrameIndexTWithLast(frameValues: Uint32Array, t: FastFloat, animBegin:Int): Bool {
 		return speed > 0 ?
-			frameIndex < end && t > (frameIndex + 1) * frameTime :
-			frameIndex > start && t > (frameIndex - 1) * frameTime;
+			frameIndex < frameValues.length - 1 && t > frameValues[frameIndex + 1] * frameTime :
+			frameIndex > 1 && t > frameValues[frameIndex - 1] * frameTime;
 	}
 
 	var oldti = null;
@@ -194,25 +187,28 @@ class ObjectAnimation extends Animation {
 			layersCache = new Map<String, VisibilityLayerCache>();
 		}
 
-		var total = (anim.end + 1) * frameTime;
+		var total = (anim.end - anim.begin + 1) * frameTime;
 		for (track in anim.tracks) {
-			if (frameIndex == -1) rewindWithLast(track, anim.begin, anim.end);
+			if (frameIndex == -1) rewind(track);
 			var sign = speed > 0 ? 1 : -1;
+
 			// End of current time range
-			while (checkFrameIndexTWithLast(anim.begin, anim.end, time)) frameIndex += sign;
+			var t = time + anim.begin * frameTime;
+			while (checkFrameIndexTWithLast(track.frames, t, anim.begin)) frameIndex += sign;
 			// No data for this track at current time
-			if (frameIndex > track.frames.length) continue;
+			if (frameIndex >= track.frames.length) continue;
 
 			// End of track
 			if (time > total) {
 				if (onComplete != null) onComplete();
-				if (loop) rewindWithLast(track, anim.begin, anim.end);
+				if (loop) rewind(track);
 				else { frameIndex -= sign; paused = true; }
 				return;
 			}
+
 			var ti = frameIndex - anim.begin;
 			// allow only one draw call per frame, using a cache
-			if ((oldti = oldtilayer.get(track.target)) == null) { // setup cache for drawn frames
+			if ((oldti = oldtilayer.get(track.target)) == null) {
 				oldti = -1;
 				oldtilayer.set(track.target, oldti);
 			}
@@ -230,13 +226,12 @@ class ObjectAnimation extends Animation {
 				lCache = {
 					visible: true,
 					last_ti: null,
-					frames: [for (i in 0...track.values.length) []]
+					frames: []
 				};
 				layersCache.set(track.target, lCache);
 				spawnVisibilityCache(ti, track);
 			}
-			// spawn the rest of the anim
-			else if (track.values[ti].length != 0 && lCache.frames[ti].length == 0) {
+			else if (lCache.frames[ti] == null) { // spawn the rest of the anim
 				spawnVisibilityCache(ti, track);
 			}
 			// draw current frame data
