@@ -645,6 +645,9 @@ class Uniforms {
 				case "_fieldOfView": {
 					f = camera.data.raw.fov;
 				}
+				case "_faceDir": {
+					f = RenderPath.active.currentFace != 0 ? 1.0 : -1.0;
+				}
 			}
 
 			if (f != null) {
@@ -769,6 +772,14 @@ class Uniforms {
 					m = cast(object, MeshObject).prevMatrix;
 				}
 				#end
+				case "_lightWorldViewMatrix": {
+					if (light != null) {
+						// object is null for DrawQuad
+						object == null ? helpMat.setIdentity() : helpMat.setFrom(object.transform.worldUnpack);
+						helpMat.multmat(light.V);
+						m = helpMat;
+					}
+				}
 				case "_lightWorldViewProjectionMatrix": {
 					if (light != null) {
 						// object is null for DrawQuad
@@ -1018,6 +1029,11 @@ class Uniforms {
 				case "_biasLightWorldViewProjectionMatrixSpotArray": {
 					fa = LightObject.updateLWVPMatrixArray(object, "spot");
 				}
+				#if arm_plight_dpsm
+				case "_biasLightWorldViewMatrixArray": {
+					fa = LightObject.updateLWVMatrixArray(object);
+				}
+				#end
 				#end // arm_clusters
 			}
 

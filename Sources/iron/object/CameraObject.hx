@@ -149,6 +149,15 @@ class CameraObject extends Object {
 		return true;
 	}
 
+	public static function setParaboloidFace(m: Mat4, eye: Vec4, face: Int, flip = false) {
+		// Set matrix to match cubemap face
+		vcenter.setFrom(eye);
+		// z+
+		vcenter.addf(0.0, 0.0, -1.0);
+		vup.set(0.0, 1.0, 0.0);
+		m.setLookAt(eye, vcenter, vup);
+	}
+
 	public static function setCubeFace(m: Mat4, eye: Vec4, face: Int, flip = false) {
 		// Set matrix to match cubemap face
 		vcenter.setFrom(eye);

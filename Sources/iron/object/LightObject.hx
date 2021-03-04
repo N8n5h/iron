@@ -57,6 +57,9 @@ class LightObject extends Object {
 	public static var clustersData: kha.Image = null;
 	static var lpos = new Vec4();
 	public static var LWVPMatrixArray: Float32Array = null;
+	#if arm_plight_dpsm
+	public static var LWVMatrixArray: Float32Array = null;
+	#end
 	#end // arm_clusters
 
 	public var V: Mat4 = Mat4.identity();
@@ -279,12 +282,19 @@ class LightObject extends Object {
 	public function setCubeFace(face: Int, camera: CameraObject) {
 		// Set matrix to match cubemap face
 		eye.set(transform.worldx(), transform.worldy(), transform.worldz());
-		#if (!kha_opengl && !kha_webgl && !arm_shadowmap_atlas)
+		#if (!kha_opengl && !kha_webgl)
 		var flip = (face == 2 || face == 3) ? true : false; // Flip +Y, -Y
 		#else
 		var flip = false;
 		#end
 		CameraObject.setCubeFace(V, eye, face, flip);
+		updateViewFrustum(camera);
+	}
+
+	public function setParaboloidFace(face: Int, camera: CameraObject) {
+		// Set matrix to match paraboloid face
+		eye.set(transform.worldx(), transform.worldy(), transform.worldz());
+		CameraObject.setParaboloidFace(V, eye, face);
 		updateViewFrustum(camera);
 	}
 
@@ -593,6 +603,47 @@ class LightObject extends Object {
 		}
 		return LWVPMatrixArray;
 	}
+
+	#if arm_plight_dpsm
+	public static function updateLWVMatrixArray(object: Object) {
+		if (LWVMatrixArray == null) {
+			LWVMatrixArray = new Float32Array(maxLightsCluster * 16);
+		}
+
+		var lights = Scene.active.lights;
+		var n = lights.length > maxLightsCluster ? maxLightsCluster : lights.length;
+		var i = 0;
+
+		for (light in lights) {
+			if (i >= n)
+				break;
+			if (discardLightCulled(light)) continue;
+			if (light.data.raw.type == "point") {
+				(object == null) ? m.setIdentity() : m.setFrom(object.transform.worldUnpack);
+				m.multmat(light.V);
+
+				LWVMatrixArray[i * 16    ] = m._00;
+				LWVMatrixArray[i * 16 + 1] = m._01;
+				LWVMatrixArray[i * 16 + 2] = m._02;
+				LWVMatrixArray[i * 16 + 3] = m._03;
+				LWVMatrixArray[i * 16 + 4] = m._10;
+				LWVMatrixArray[i * 16 + 5] = m._11;
+				LWVMatrixArray[i * 16 + 6] = m._12;
+				LWVMatrixArray[i * 16 + 7] = m._13;
+				LWVMatrixArray[i * 16 + 8] = m._20;
+				LWVMatrixArray[i * 16 + 9] = m._21;
+				LWVMatrixArray[i * 16 + 10] = m._22;
+				LWVMatrixArray[i * 16 + 11] = m._23;
+				LWVMatrixArray[i * 16 + 12] = m._30;
+				LWVMatrixArray[i * 16 + 13] = m._31;
+				LWVMatrixArray[i * 16 + 14] = m._32;
+				LWVMatrixArray[i * 16 + 15] = m._33;
+			}
+			i++;
+		}
+		return LWVMatrixArray;
+	}
+	#end // arm_plight_dpsm
 
 	public static inline function getMaxLights(): Int {
 		#if (rp_max_lights == 8)

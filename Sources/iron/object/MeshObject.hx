@@ -124,7 +124,7 @@ class MeshObject extends Object {
 		var mats = materials;
 		if (!isLodMaterial() && !validContext(mats, context)) return true;
 
-		var isShadow = context == "shadowmap";
+		var isShadow = context == "shadowmap" #if arm_plight_dpsm || context == "shadowmapdp"#end;
 		if (!visibleMesh && !isShadow) return setCulled(isShadow, true);
 		if (!visibleShadow && isShadow) return setCulled(isShadow, true);
 
@@ -151,7 +151,7 @@ class MeshObject extends Object {
 			#end
 			if (context == "voxel") radiusScale *= 100;
 			if (data.geom.instanced) radiusScale *= 100;
-			var isShadow = context == "shadowmap";
+			var isShadow = context == "shadowmap" #if arm_plight_dpsm || context == "shadowmapdp" #end;
 			var frustumPlanes = isShadow ? light.frustumPlanes : camera.frustumPlanes;
 
 			if (isShadow && light.data.raw.type != "sun") { // Non-sun light bounds intersect camera frustum
@@ -311,7 +311,7 @@ class MeshObject extends Object {
 		}
 
 		#if arm_debug
-		var isShadow = context == "shadowmap";
+		var isShadow = context == "shadowmap" #if arm_plight_dpsm || context == "shadowmapdp" #end;
 		if (meshContext) RenderPath.numTrisMesh += ldata.geom.numTris;
 		else if (isShadow) RenderPath.numTrisShadow += ldata.geom.numTris;
 		RenderPath.drawCalls++;
